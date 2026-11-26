@@ -18,7 +18,27 @@ the rulebook (guards and side effects), and a symmetric TLA+ spec.
 [include/jacquard/core.hpp](include/jacquard/core.hpp) holds the shared pieces (expanded once);
 [include/jacquard/machine.hpp](include/jacquard/machine.hpp) **deliberately has no include guard**.
 Redefine `SM_DEF` and include it again, and each pass exposes an independent
-`<SM_NAME>` machine type inside `namespace jacquard`, with definition macros `#undef`ed at the end:
+`<Name>` machine type inside `namespace jacquard`, with all DSL macros `#undef`ed at the end:
+
+```cpp
+// jacquard/conn.inc
+BEGIN_MACHINE(Conn)
+  STATE(Closed)
+  STATE(Connecting)
+  STATE(Open)
+
+  EVENT(Dial)
+  EVENT(Connected)
+  EVENT(Drop)
+
+  INIT(Closed)
+
+  ON(Closed,     Dial,      Connecting)
+  ON(Connecting, Connected, Open)
+  ON(Connecting, Drop,      Closed)
+  ON(Open,       Drop,      Closed)
+END_MACHINE
+```
 
 ```cpp
 #define SM_DEF "jacquard/transitions.inc"
@@ -33,8 +53,10 @@ metadata can have header-safe definitions. The `jacquard::Conn::State` and CRTP 
 patterns remain the same as before the project was renamed, but
 `namespace jacquard { struct Conn; }` forward declarations must be replaced with the
 generated include. Rebuild dependent translation units: the namespace rename changes
-type identity and is not ABI-compatible with old object files. The `SM_DEF`, `SM_NAME`,
-and other `SM_*` definition macros are unchanged.
+type identity and is not ABI-compatible with old object files. The `.inc` schema uses
+replayable `BEGIN_MACHINE` / `STATE` / `EVENT` / `INIT` / `TERMINAL` / `ON` / `END_MACHINE`
+declarations (selected via `SM_DEF`), allowing inline comments and `#ifdef` branches without
+trailing backslashes.
 
 Meta utilities (`type_list`, `type_list_size`, `element_at`, `prepend`) live in
 [include/jacquard/meta.hpp](include/jacquard/meta.hpp), a vendored copy of
@@ -43,7 +65,7 @@ included so that **Jacquard has zero external dependencies**; they will be extra
 shared base library together with the rest of the low-level pieces.
 
 **2. Dense slot table plus per-edge thunks: value-level preprocessing, O(1) lookup.**
-`SM_TRANSITIONS` first expands into a constexpr value array `kEdges` (trailing commas are
+`ON(From, Event, To)` declarations first expand into a constexpr value array `kEdges` (trailing commas are
 legal in brace initialization, so there is no sentinel and therefore no edge-count
 recursion such as `strip_last`), then folds into a dense slot table `cells()[row][fanout]`
 where `row = from * NE + event` and each slot stores the index of the declared edge.
@@ -173,13 +195,13 @@ throws before updating its base state; callers must not replace its object lifet
 - `emit_tla` generates `VARIABLES state, event` from the same `.inc` (`event` records the
   last successful transition event, initially `"NONE"`), rendering every edge — fork branches included —
   as one disjunct of `Next`. Custom invariants belong in a separate module that does
-  `EXTENDS <SM_NAME>`; never edit the generated files by hand. This is an **over-approximation**:
+  `EXTENDS <Name>`; never edit the generated files by hand. This is an **over-approximation**:
   in C++ the branches of a fork are evaluated in order and the first true guard wins, while
   TLA+ treats each branch as an independent nondeterministic choice. TLC checks the enabled
   properties over that abstract graph; it does not validate guard expressions or hook effects.
   A failed hook leaves the projected state and last successful event unchanged, so it is
   represented by a stuttering step in the generated spec.
-- **Allowed terminals are a business declaration.** Optional `SM_TERMINALS(X)` lists states
+- **Allowed terminals are a business declaration.** Optional `TERMINAL(State)` lines list states
   allowed to stop changing state; omitting it declares an empty set. Job explicitly lists
   `Done` and `Cancelled`; Conn has none. Missing outgoing edges never grant terminal status.
   The generated config enables `TypeOK` and this invariant:
@@ -210,7 +232,7 @@ cmake --build build --target check-spec  # fail if the checked-in specs drifted
 ```
 
 `spec`, `check-spec`, and CTest's example model tests share the registrations in
-[`CMakeLists.txt`](CMakeLists.txt). The output file names come from the `SM_NAME` in
+[`CMakeLists.txt`](CMakeLists.txt). The output file names come from `BEGIN_MACHINE(<Name>)` in
 each `.inc`, not the input file name. The compiler's header dependency tracking
 rebuilds an emitter whenever its own `.inc` changes. The default build and CTest do not
 rewrite checked-in specs; regeneration is an explicit target.

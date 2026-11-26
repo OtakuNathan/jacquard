@@ -1,12 +1,13 @@
 // Single source of truth for the machine name, states, events, initial state, and edges.
 //
-// Multiple consumers use the same declarations:
-//   SM_NAME                                  Class and TLA+ module name (jacquard::<SM_NAME>)
-//   SM_STATES(X)       X(State)              States, in enum declaration order
-//   SM_EVENTS(X)       X(Event)              Event alphabet
-//   SM_INIT(X)         X(State)              Initial state
-//   SM_TERMINALS(X)    X(State)              Allowed terminal states (optional; defaults to none)
-//   SM_TRANSITIONS(X)  X(From, Event, To)    Allowed transitions; branches may share a source and event
+// Multiple consumers replay this file with different macro projections:
+//   BEGIN_MACHINE(Name)    Class and TLA+ module name (jacquard::<Name>)
+//   STATE(Name)            States, in enum declaration order
+//   EVENT(Name)            Event alphabet
+//   INIT(State)            Initial state (exactly one)
+//   TERMINAL(State)        Allowed terminal states (optional; defaults to none)
+//   ON(From, Event, To)    Allowed transitions; branches may share a source and event
+//   END_MACHINE            Closes the machine block
 //
 // Rules:
 //   * A missing (From, Event) pair or a pair whose guards all return false is
@@ -16,38 +17,33 @@
 //   * Duplicate (From, Event, To) triples fail a static assertion.
 //   * Only the graph is declared here; the C++ rulebook owns guards and effects.
 
-#define SM_NAME Job
+BEGIN_MACHINE(Job)
+  STATE(Idle)
+  STATE(Pending)
+  STATE(Running)
+  STATE(Done)
+  STATE(Failed)
+  STATE(Cancelled)
 
-#define SM_STATES(X) \
-  X(Idle)            \
-  X(Pending)         \
-  X(Running)         \
-  X(Done)            \
-  X(Failed)          \
-  X(Cancelled)
+  EVENT(Submit)
+  EVENT(Start)
+  EVENT(Complete)
+  EVENT(Fail)
+  EVENT(Cancel)
+  EVENT(Retry)
 
-#define SM_EVENTS(X) \
-  X(Submit)          \
-  X(Start)           \
-  X(Complete)        \
-  X(Fail)            \
-  X(Cancel)          \
-  X(Retry)
+  INIT(Idle)
 
-#define SM_INIT(X) \
-  X(Idle)
+  // A business contract, independent of which outgoing edges are present.
+  TERMINAL(Done)
+  TERMINAL(Cancelled)
 
-// A business contract, independent of which outgoing edges are present.
-#define SM_TERMINALS(X) \
-  X(Done)              \
-  X(Cancelled)
-
-#define SM_TRANSITIONS(X)          \
-  X(Idle, Submit, Pending)         \
-  X(Pending, Start, Running)       \
-  X(Pending, Cancel, Cancelled)    \
-  X(Running, Complete, Done)       \
-  X(Running, Fail, Failed)         \
-  X(Running, Cancel, Cancelled)    \
-  X(Failed, Retry, Pending)        \
-  X(Failed, Retry, Cancelled)
+  ON(Idle,    Submit,   Pending)
+  ON(Pending, Start,    Running)
+  ON(Pending, Cancel,   Cancelled)
+  ON(Running, Complete, Done)
+  ON(Running, Fail,     Failed)
+  ON(Running, Cancel,   Cancelled)
+  ON(Failed,  Retry,    Pending)
+  ON(Failed,  Retry,    Cancelled)
+END_MACHINE

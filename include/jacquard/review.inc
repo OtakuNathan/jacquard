@@ -1,13 +1,24 @@
 // Guarded review demo: a verified result is classified by its score.
-#define SM_NAME Review
-#define SM_STATES(X) X(Draft) X(Reviewing) X(Approved) X(Rejected) X(Cancelled)
-#define SM_EVENTS(X) X(Submit) X(Decide) X(Cancel)
-#define SM_INIT(X) X(Draft)
-#define SM_TERMINALS(X) X(Approved) X(Rejected) X(Cancelled)
 
-#define SM_TRANSITIONS(X)             \
-  X(Draft, Submit, Reviewing)         \
-  X(Reviewing, Decide, Approved)      \
-  X(Reviewing, Decide, Rejected)      \
-  X(Draft, Cancel, Cancelled)         \
-  X(Reviewing, Cancel, Cancelled)
+BEGIN_MACHINE(Review)
+  STATE(Draft)
+  STATE(Reviewing)
+  STATE(Approved)
+  STATE(Rejected)
+  STATE(Cancelled)
+
+  EVENT(Submit)
+  EVENT(Decide)
+  EVENT(Cancel)
+
+  INIT(Draft)
+  TERMINAL(Approved)
+  TERMINAL(Rejected)
+  TERMINAL(Cancelled)
+
+  ON(Draft,     Submit, Reviewing)
+  ON(Reviewing, Decide, Approved)
+  ON(Reviewing, Decide, Rejected)
+  ON(Draft,     Cancel, Cancelled)
+  ON(Reviewing, Cancel, Cancelled)
+END_MACHINE

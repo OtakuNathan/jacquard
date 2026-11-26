@@ -1,7 +1,7 @@
 // Jacquard: a state-machine generator with a re-includable header (header-only C++14).
 //
 // There is intentionally no include guard. Redefine SM_DEF and include this file
-// again to create a separate definition and public <SM_NAME> alias in namespace jacquard.
+// again to create a separate definition and public <Name> alias in namespace jacquard.
 //
 // Usage:
 //   #define SM_DEF "jacquard/transitions.inc"
@@ -13,9 +13,11 @@
 // If SM_DEF is not defined, use "jacquard/transitions.inc".
 //
 // How it works:
-//   1. SM_TRANSITIONS expands into the constexpr kEdges array. A trailing comma is
-//      valid, so no sentinel or recursive strip_last is needed. The dense slot table
-//      indexes cells by from * NE + event and stores edge indices in declaration order.
+//   1. SM_DEF uses BEGIN_MACHINE(Name) / STATE / EVENT / INIT / TERMINAL / ON / END_MACHINE.
+//      This header replays SM_DEF across projection passes and #undefs all DSL macros afterward.
+//      ON(...) expands into the constexpr kEdges array (a trailing comma is valid, so no sentinel
+//      or recursive strip_last is needed). The dense slot table indexes cells by from * NE + event
+//      and stores edge indices in declaration order.
 //   2. Dispatch finds the candidate cell in O(1), then tries its guards in order.
 //      An index_sequence expansion builds the function pointer table without recursion.
 //   3. A (From, Event) pair can have several edges, tried in declaration order:
@@ -44,47 +46,53 @@
 #define SM_DEF "jacquard/transitions.inc"
 #endif
 
-#include SM_DEF
-
-#ifndef SM_NAME
-#error "SM_DEF must define SM_NAME"
-#endif
-#ifndef SM_STATES
-#error "SM_DEF must define SM_STATES(X)"
-#endif
-#ifndef SM_EVENTS
-#error "SM_DEF must define SM_EVENTS(X)"
-#endif
-#ifndef SM_INIT
-#error "SM_DEF must define SM_INIT(X)"
-#endif
-#ifndef SM_TRANSITIONS
-#error "SM_DEF must define SM_TRANSITIONS(X)"
-#endif
-
-#define JACQUARD_DEFINITION JACQUARD_JOIN(SM_NAME, _definition)
-
 namespace jacquard {
 
-// The generated class is a template so every C++14 static data member can have
-// a header definition. The public alias below keeps SM_NAME::State / Machine.
-template <class DefinitionTag = void>
-struct JACQUARD_DEFINITION {
-  static constexpr const char* name() noexcept { return JACQUARD_STR(SM_NAME); }
+// Pass 1: open the generated class template (C++14 ODR-safe header definitions)
+// and emit enum class State.
+#define BEGIN_MACHINE(Name)                                                   \
+  template <class DefinitionTag = void>                                       \
+  struct JACQUARD_JOIN(Name, _definition) {                                   \
+    using Self = JACQUARD_JOIN(Name, _definition);                            \
+    static constexpr const char* name() noexcept { return JACQUARD_STR(Name); } \
+    enum class State : std::size_t {
+#define STATE(S) S,
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE \
+  COUNT             \
+  }                 \
+  ;
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
 
-  enum class State : std::size_t {
-#define JACQUARD_S(n) n,
-    SM_STATES(JACQUARD_S)
-#undef JACQUARD_S
-    COUNT
-  };
-
-  enum class Event : std::size_t {
-#define JACQUARD_E(n) n,
-    SM_EVENTS(JACQUARD_E)
-#undef JACQUARD_E
-    COUNT
-  };
+// Pass 2: emit enum class Event.
+#define BEGIN_MACHINE(Name) enum class Event : std::size_t {
+#define STATE(S)
+#define EVENT(E) E,
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE \
+  COUNT             \
+  }                 \
+  ;
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
 
   static constexpr std::size_t NS = static_cast<std::size_t>(State::COUNT);
   static constexpr std::size_t NE = static_cast<std::size_t>(Event::COUNT);
@@ -96,15 +104,60 @@ struct JACQUARD_DEFINITION {
     return static_cast<std::size_t>(e);
   }
 
-#define JACQUARD_S(n) State::n
-  static constexpr State kInitial = SM_INIT(JACQUARD_S);
-#undef JACQUARD_S
+// Pass 3: initial state (missing or duplicate INIT fails to compile).
+#define BEGIN_MACHINE(Name)
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S) static constexpr State kInitial = State::S;
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
+
+  static_assert(ix(kInitial) < NS, "INIT must name a declared state");
+
+// Pass 4: validate every declared TERMINAL at compile time (including COUNT).
+#define BEGIN_MACHINE(Name)
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S) \
+  static_assert(ix(State::S) < NS, "TERMINAL must name a declared state");
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
 
   static const char* state_name(State s) noexcept {
     static const char* const kNames[] = {
-#define JACQUARD_S(n) #n,
-        SM_STATES(JACQUARD_S)
-#undef JACQUARD_S
+#define BEGIN_MACHINE(Name)
+#define STATE(S) #S,
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
     };
     const std::size_t i = ix(s);
     return i < NS ? kNames[i] : "<invalid>";
@@ -112,12 +165,44 @@ struct JACQUARD_DEFINITION {
 
   static const char* event_name(Event e) noexcept {
     static const char* const kNames[] = {
-#define JACQUARD_E(n) #n,
-        SM_EVENTS(JACQUARD_E)
-#undef JACQUARD_E
+#define BEGIN_MACHINE(Name)
+#define STATE(S)
+#define EVENT(E) #E,
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
     };
     const std::size_t i = ix(e);
     return i < NE ? kNames[i] : "<invalid>";
+  }
+
+  template <class Fn>
+  static void for_each_terminal(Fn fn) {
+    (void)fn;
+#define BEGIN_MACHINE(Name)
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S) fn(State::S);
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
   }
 
   // A transition is an empty tag carrying its source, event, and target.
@@ -150,11 +235,23 @@ struct JACQUARD_DEFINITION {
   // and ODR use across TUs in C++14. Inline functions hold the derived index tables.
   template <class = void>
   struct Tables {
-#define JACQUARD_T(f, ev, to) {State::f, Event::ev, State::to},
     static constexpr EdgeDesc kEdges[] = {
-        SM_TRANSITIONS(JACQUARD_T)
+#define BEGIN_MACHINE(Name)
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T) {State::F, Event::Ev, State::T},
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
     };
-#undef JACQUARD_T
 
     static constexpr std::size_t kEdgesCount =
         sizeof(kEdges) / sizeof(kEdges[0]);
@@ -210,7 +307,7 @@ struct JACQUARD_DEFINITION {
   template <class D>
   class Machine {
    public:
-    using Spec = JACQUARD_DEFINITION;
+    using Spec = Self;
     using State = typename Spec::State;
     using Event = typename Spec::Event;
     template <State F, Event Ev, State T>
@@ -577,43 +674,50 @@ struct JACQUARD_DEFINITION {
 
 // C++14 definitions: all owners are templates, so these are ODR-safe in a
 // header even when callers take addresses or bind references across TUs.
-template <class DefinitionTag>
-constexpr std::size_t JACQUARD_DEFINITION<DefinitionTag>::NS;
-template <class DefinitionTag>
-constexpr std::size_t JACQUARD_DEFINITION<DefinitionTag>::NE;
-template <class DefinitionTag>
-constexpr typename JACQUARD_DEFINITION<DefinitionTag>::State
-    JACQUARD_DEFINITION<DefinitionTag>::kInitial;
-template <class DefinitionTag>
-constexpr std::size_t JACQUARD_DEFINITION<DefinitionTag>::kNumEdges;
-template <class DefinitionTag>
-constexpr std::size_t JACQUARD_DEFINITION<DefinitionTag>::kMaxFanout;
-
-template <class DefinitionTag>
-template <class TableTag>
-constexpr typename JACQUARD_DEFINITION<DefinitionTag>::EdgeDesc
-    JACQUARD_DEFINITION<DefinitionTag>::Tables<TableTag>::kEdges[];
-template <class DefinitionTag>
-template <class TableTag>
-constexpr std::size_t
-    JACQUARD_DEFINITION<DefinitionTag>::Tables<TableTag>::kEdgesCount;
-template <class DefinitionTag>
-template <class TableTag>
-constexpr std::size_t
-    JACQUARD_DEFINITION<DefinitionTag>::Tables<TableTag>::kMaxFanout;
-
-using SM_NAME = JACQUARD_DEFINITION<>;
+#define BEGIN_MACHINE(Name)                                                    \
+  template <class DefinitionTag>                                               \
+  constexpr std::size_t JACQUARD_JOIN(Name, _definition)<DefinitionTag>::NS;   \
+  template <class DefinitionTag>                                               \
+  constexpr std::size_t JACQUARD_JOIN(Name, _definition)<DefinitionTag>::NE;   \
+  template <class DefinitionTag>                                               \
+  constexpr typename JACQUARD_JOIN(Name, _definition)<DefinitionTag>::State    \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::kInitial;               \
+  template <class DefinitionTag>                                               \
+  constexpr std::size_t                                                        \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::kNumEdges;              \
+  template <class DefinitionTag>                                               \
+  constexpr std::size_t                                                        \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::kMaxFanout;             \
+  template <class DefinitionTag>                                               \
+  template <class TableTag>                                                    \
+  constexpr typename JACQUARD_JOIN(Name, _definition)<DefinitionTag>::EdgeDesc \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::Tables<TableTag>::kEdges[]; \
+  template <class DefinitionTag>                                               \
+  template <class TableTag>                                                    \
+  constexpr std::size_t                                                        \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::Tables<TableTag>::kEdgesCount; \
+  template <class DefinitionTag>                                               \
+  template <class TableTag>                                                    \
+  constexpr std::size_t                                                        \
+      JACQUARD_JOIN(Name, _definition)<DefinitionTag>::Tables<TableTag>::kMaxFanout; \
+  using Name = JACQUARD_JOIN(Name, _definition)<>;
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
 
 }  // namespace jacquard
 
-#undef JACQUARD_DEFINITION
-
 #ifndef JACQUARD_KEEP_MACROS
 #undef SM_DEF
-#undef SM_NAME
-#undef SM_STATES
-#undef SM_EVENTS
-#undef SM_INIT
-#undef SM_TRANSITIONS
-#undef SM_TERMINALS
 #endif

@@ -58,7 +58,7 @@ jacquard_negative(void_hook_result "${CMAKE_CURRENT_SOURCE_DIR}/hook_wrong_resul
 jacquard_negative(int_hook_result "${CMAKE_CURRENT_SOURCE_DIR}/hook_wrong_result.cpp" "trans_t handler must return bool")
 jacquard_negative(void_hook_dispatch "${CMAKE_CURRENT_SOURCE_DIR}/hook_wrong_result.cpp" "trans_t handler must return bool" JACQUARD_VOID_HOOK JACQUARD_DISPATCH_ONLY)
 jacquard_negative(unknown_terminal "${PROJECT_SOURCE_DIR}/tools/emit_tla.cpp" "UnknownTerminal" "SM_DEF=\"models/lifecycle.inc\"" JACQUARD_BAD_TERMINAL=UnknownTerminal)
-jacquard_negative(count_terminal "${PROJECT_SOURCE_DIR}/tools/emit_tla.cpp" "SM_TERMINALS must name a declared state" "SM_DEF=\"models/lifecycle.inc\"" JACQUARD_BAD_TERMINAL=COUNT)
+jacquard_negative(count_terminal "${PROJECT_SOURCE_DIR}/tools/emit_tla.cpp" "TERMINAL must name a declared state" "SM_DEF=\"models/lifecycle.inc\"" JACQUARD_BAD_TERMINAL=COUNT)
 
 function(lifecycle_emitter name terminals)
   jacquard_add_emitter(model_${name} "models/lifecycle.inc" ${ARGN})

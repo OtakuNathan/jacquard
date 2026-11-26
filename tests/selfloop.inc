@@ -2,25 +2,19 @@
 // It is not an allowed terminal. TLC must report an invariant NoStuck failure.
 // Open has both a self-loop and a state-changing successor, so it is allowed.
 
-#define SM_NAME Spin
+BEGIN_MACHINE(Spin)
+  STATE(Closed)
+  STATE(Open)
+  STATE(Draining)
 
-#define SM_STATES(X) \
-  X(Closed)          \
-  X(Open)            \
-  X(Draining)
+  EVENT(Dial)
+  EVENT(Reset)
+  EVENT(Tick)
 
-#define SM_EVENTS(X) \
-  X(Dial)          \
-  X(Reset)         \
-  X(Tick)
+  INIT(Closed)
 
-#define SM_INIT(X) \
-  X(Closed)
-
-#define SM_TERMINALS(X)
-
-#define SM_TRANSITIONS(X)  \
-  X(Closed, Dial, Open)     \
-  X(Open, Tick, Open)       \
-  X(Open, Reset, Draining)  \
-  X(Draining, Reset, Draining)
+  ON(Closed,   Dial,  Open)
+  ON(Open,     Tick,  Open)
+  ON(Open,     Reset, Draining)
+  ON(Draining, Reset, Draining)
+END_MACHINE

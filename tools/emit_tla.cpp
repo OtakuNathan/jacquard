@@ -1,14 +1,14 @@
 // Generate a TLA+ module and TLC configuration from SM_DEF.
-//   emit_tla       > spec/<SM_NAME>.tla
-//   emit_tla cfg   > spec/<SM_NAME>.cfg
+//   emit_tla       > spec/<Name>.tla
+//   emit_tla cfg   > spec/<Name>.cfg
 //   emit_tla name  prints the module name for build tooling.
 //
-// Each declared edge becomes a Next alternative. Guarded forks are
+// Each declared ON(From, Event, To) becomes a Next alternative. Guarded forks are
 // nondeterministic here: this overapproximates successful C++ transitions,
 // without modeling guards, payloads, hook effects, or scheduling fairness.
 // The ghost variable event records the latest successful transition.
 //
-// SM_TERMINALS(X) is a separate business contract: these states may remain
+// TERMINAL(State) is a separate business contract: these states may remain
 // quiescent. Omitting it means an empty set, never inferred from missing edges.
 // NoStuck checks potential structural progress from every other reachable
 // state. It does not require that progress actually occurs.
@@ -19,10 +19,6 @@
 
 #define JACQUARD_KEEP_MACROS
 #include "jacquard/machine.hpp"
-
-#ifndef SM_TERMINALS
-#define SM_TERMINALS(X)
-#endif
 
 namespace {
 
@@ -41,17 +37,11 @@ void emit_cfg() {
 template <class SM>
 void emit_terminals() {
   std::printf("AllowedTerminals == {");
-  // Each macro argument must name a real enum member. The bound check also
-  // rejects the enum's COUNT sentinel, which is not a declared state.
   bool first = true;
-  (void)first;  // An empty terminal list is valid.
-#define JACQUARD_EMIT_TERMINAL(S)                                               \
-  static_assert(SM::ix(SM::State::S) < SM::NS,                                 \
-                "SM_TERMINALS must name a declared state");                   \
-  std::printf("%s\"%s\"", first ? "" : ", ", SM::state_name(SM::State::S)); \
-  first = false;
-  SM_TERMINALS(JACQUARD_EMIT_TERMINAL)
-#undef JACQUARD_EMIT_TERMINAL
+  SM::for_each_terminal([&](typename SM::State s) {
+    std::printf("%s\"%s\"", first ? "" : ", ", SM::state_name(s));
+    first = false;
+  });
   std::printf("}\n\n");
 }
 
@@ -100,10 +90,8 @@ void emit_tla() {
       "====\n");
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  using Target = jacquard::SM_NAME;
+template <class Target>
+int run_emitter(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "name") == 0) {
     std::printf("%s\n", Target::name());
     return 0;
@@ -114,4 +102,24 @@ int main(int argc, char** argv) {
   }
   emit_tla<Target>();
   return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+#define BEGIN_MACHINE(Name) return run_emitter<jacquard::Name>(argc, argv);
+#define STATE(S)
+#define EVENT(E)
+#define INIT(S)
+#define TERMINAL(S)
+#define ON(F, Ev, T)
+#define END_MACHINE
+#include SM_DEF
+#undef BEGIN_MACHINE
+#undef STATE
+#undef EVENT
+#undef INIT
+#undef TERMINAL
+#undef ON
+#undef END_MACHINE
 }

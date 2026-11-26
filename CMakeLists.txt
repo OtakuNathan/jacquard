@@ -42,7 +42,7 @@ function(jacquard_example name definition terminals)
   endif()
 endfunction()
 
-# One registration per machine: the emitter's SM_NAME determines file names.
+# One registration per machine: BEGIN_MACHINE(<Name>) determines output file names.
 jacquard_example(job "jacquard/transitions.inc" "{\"Done\", \"Cancelled\"}")
 jacquard_example(conn "jacquard/conn.inc" "{}")
 jacquard_example(review "jacquard/review.inc" "{\"Approved\", \"Rejected\", \"Cancelled\"}")

@@ -1,13 +1,22 @@
 // Two ordered forks, one with payloads, plus a self-loop and reset.
-#define SM_NAME HookResults
-#define SM_STATES(X) X(Ready) X(Primary) X(Alternative)
-#define SM_EVENTS(X) X(Run) X(RunPayload) X(Reset) X(Loop)
-#define SM_INIT(X) X(Ready)
-#define SM_TRANSITIONS(X)                           \
-  X(Ready, Run, Primary)                           \
-  X(Ready, Run, Alternative)                       \
-  X(Ready, RunPayload, Primary)                    \
-  X(Ready, RunPayload, Alternative)                \
-  X(Primary, Reset, Ready)                         \
-  X(Alternative, Reset, Ready)                     \
-  X(Ready, Loop, Ready)
+
+BEGIN_MACHINE(HookResults)
+  STATE(Ready)
+  STATE(Primary)
+  STATE(Alternative)
+
+  EVENT(Run)
+  EVENT(RunPayload)
+  EVENT(Reset)
+  EVENT(Loop)
+
+  INIT(Ready)
+
+  ON(Ready,       Run,        Primary)
+  ON(Ready,       Run,        Alternative)
+  ON(Ready,       RunPayload, Primary)
+  ON(Ready,       RunPayload, Alternative)
+  ON(Primary,     Reset,      Ready)
+  ON(Alternative, Reset,      Ready)
+  ON(Ready,       Loop,       Ready)
+END_MACHINE
